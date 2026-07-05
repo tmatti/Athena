@@ -14,6 +14,8 @@ import (
 	"github.com/tmatti/athena/internal/api"
 	"github.com/tmatti/athena/internal/config"
 	"github.com/tmatti/athena/internal/db"
+	"github.com/tmatti/athena/internal/service"
+	"github.com/tmatti/athena/internal/store"
 )
 
 func main() {
@@ -46,10 +48,14 @@ func run() error {
 	}
 	log.Info("database ready")
 
+	brain := service.New(store.New(pool), nil, log)
+	handlers := &api.Handlers{Brain: brain}
+
 	router := api.NewRouter(api.RouterOptions{
 		Log:     log,
 		APIKey:  cfg.BrainAPIKey,
 		Healthy: pool.Ping,
+		V1:      handlers.Routes,
 	})
 
 	srv := &http.Server{
