@@ -3,7 +3,9 @@ package mcpserver
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -112,6 +114,15 @@ func TestForgetInvalidUUIDReturnsToolError(t *testing.T) {
 	})
 	require.True(t, res.IsError)
 	require.Contains(t, resultText(t, res), "memory_id must be a valid UUID")
+}
+
+func TestOneLineMultibyteStaysValidUTF8(t *testing.T) {
+	// 200 3-byte runes = 600 bytes, well over the 300-byte truncation point;
+	// a naive byte slice would cut a rune in half and emit invalid UTF-8.
+	s := strings.Repeat("记", 200)
+	got := oneLine(s)
+	require.True(t, utf8.ValidString(got), "oneLine output must be valid UTF-8")
+	require.True(t, strings.HasSuffix(got, "..."))
 }
 
 // extractID pulls the "id=<uuid>" token out of a tool result's text.

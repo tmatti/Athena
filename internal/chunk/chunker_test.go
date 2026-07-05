@@ -3,6 +3,7 @@ package chunk
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 )
@@ -33,8 +34,8 @@ func TestSplitPacksParagraphsToTarget(t *testing.T) {
 func TestSplitOverlapCarriesTrailingParagraph(t *testing.T) {
 	// Two chunks worth of distinct paragraphs; the second chunk must start
 	// with (the tail of) the last paragraph of the first.
-	p1 := "first " + strings.Repeat("alpha ", 150)  // ~900 chars
-	p2 := "second " + strings.Repeat("beta ", 100)  // ~500 chars -> overflows target with p1
+	p1 := "first " + strings.Repeat("alpha ", 150) // ~900 chars
+	p2 := "second " + strings.Repeat("beta ", 100) // ~500 chars -> overflows target with p1
 	p3 := "third " + strings.Repeat("gamma ", 100)
 
 	chunks := Split(strings.Join([]string{p1, p2, p3}, "\n\n"))
@@ -73,4 +74,32 @@ func TestSplitPathologicalNoSpaces(t *testing.T) {
 	for _, c := range chunks {
 		require.LessOrEqual(t, len(c), MaxSize)
 	}
+}
+
+func TestSplitOversizedMultibyteStaysValidUTF8(t *testing.T) {
+	// One oversized paragraph of 3-byte runes with no ". " sentence breaks.
+	// The leading "a" misaligns the runes from the MaxSize byte boundary, so a
+	// naive byte split would slice a rune in half and emit invalid UTF-8.
+	text := "a" + strings.Repeat("记忆是大脑存储信息的方式，", 150)
+	chunks := Split(text)
+	require.Greater(t, len(chunks), 1)
+	for _, c := range chunks {
+		require.LessOrEqual(t, len(c), MaxSize)
+		require.NotEmpty(t, c)
+		require.True(t, utf8.ValidString(c), "chunk must be valid UTF-8")
+	}
+}
+
+func TestTailNeverStartsMidRune(t *testing.T) {
+	// No spaces: the raw byte window would start mid-rune.
+	noSpaces := strings.Repeat("记", 200)
+	got := tail(noSpaces, OverlapSize)
+	require.LessOrEqual(t, len(got), OverlapSize)
+	require.True(t, utf8.ValidString(got), "tail must be valid UTF-8")
+
+	// Window boundary landing inside a multibyte rune (with a space present).
+	withSpace := "x " + strings.Repeat("记", 200)
+	got = tail(withSpace, OverlapSize)
+	require.LessOrEqual(t, len(got), OverlapSize)
+	require.True(t, utf8.ValidString(got), "tail must be valid UTF-8")
 }

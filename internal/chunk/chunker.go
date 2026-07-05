@@ -1,7 +1,10 @@
 // Package chunk splits note content into embedding-sized pieces.
 package chunk
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 const (
 	// TargetSize is the size chunks are greedily packed toward.
@@ -101,8 +104,19 @@ func splitOversized(p string) []string {
 				out = append(out, strings.TrimSpace(cur.String()))
 				cur.Reset()
 			}
-			out = append(out, s[:MaxSize])
-			s = s[MaxSize:]
+			// Back the cut up to a rune boundary so a multibyte rune is never
+			// sliced in half (Postgres rejects invalid UTF-8). A rune is at
+			// most utf8.UTFMax bytes; if no boundary is found the input is
+			// already invalid, so split at the raw offset to keep progressing.
+			cut := MaxSize
+			for i := 0; i < utf8.UTFMax-1 && !utf8.RuneStart(s[cut]); i++ {
+				cut--
+			}
+			if !utf8.RuneStart(s[cut]) {
+				cut = MaxSize
+			}
+			out = append(out, s[:cut])
+			s = s[cut:]
 		}
 		if cur.Len() > 0 && cur.Len()+1+len(s) > MaxSize {
 			out = append(out, strings.TrimSpace(cur.String()))
@@ -145,6 +159,11 @@ func tail(s string, n int) string {
 	cut := s[len(s)-n:]
 	if i := strings.IndexByte(cut, ' '); i >= 0 {
 		cut = cut[i+1:]
+	}
+	// Advance past any partial rune left at the front so the result never
+	// starts mid-rune.
+	for len(cut) > 0 && !utf8.RuneStart(cut[0]) {
+		cut = cut[1:]
 	}
 	return cut
 }
