@@ -11,10 +11,10 @@ import (
 )
 
 type Note struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Content   string    `json:"content,omitempty"` // omitted in list responses
-	Tags      []string  `json:"tags"`
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Content string   `json:"content,omitempty"` // omitted in list responses
+	Tags    []string `json:"tags"`
 	// EmbedStatus aggregates the note's chunks: failed if any chunk failed,
 	// pending if any is pending, else ok.
 	EmbedStatus string    `json:"embed_status"`
@@ -247,6 +247,7 @@ func (s *Store) SearchNotes(ctx context.Context, p SearchParams) ([]SearchResult
 			FROM note_chunks c JOIN notes n ON n.id = c.note_id,
 			     websearch_to_tsquery('english', $1) q
 			WHERE c.search @@ q%s
+			ORDER BY score DESC
 			LIMIT %d`, rrfK, tagFilter, candidatePool)
 	case ModeVector:
 		args = append(args, *p.QueryVec)

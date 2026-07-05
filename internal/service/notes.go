@@ -76,7 +76,7 @@ func (b *Brain) embedChunks(ctx context.Context, note store.Note, refs []store.C
 		return note, nil
 	}
 	for i, r := range refs {
-		if err := b.store.SetChunkEmbedding(ctx, r.ID, pgvector.NewVector(vecs[i])); err != nil {
+		if err := b.store.SetChunkEmbedding(ctx, r.ID, r.Content, pgvector.NewVector(vecs[i])); err != nil {
 			return store.Note{}, err
 		}
 	}

@@ -82,7 +82,7 @@ func (b *Brain) embedMemory(ctx context.Context, m store.Memory) (store.Memory, 
 		m.EmbedStatus = "failed"
 		return m, nil
 	}
-	if err := b.store.SetMemoryEmbedding(ctx, m.ID, pgvector.NewVector(vecs[0])); err != nil {
+	if err := b.store.SetMemoryEmbedding(ctx, m.ID, m.Content, pgvector.NewVector(vecs[0])); err != nil {
 		return store.Memory{}, err
 	}
 	m.EmbedStatus = "ok"

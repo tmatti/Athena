@@ -20,7 +20,7 @@ func seedMemory(t *testing.T, s *Store, fe *embed.FakeEmbedder, content string, 
 	require.NoError(t, err)
 	vecs, err := fe.Embed(ctx, []string{content})
 	require.NoError(t, err)
-	require.NoError(t, s.SetMemoryEmbedding(ctx, m.ID, pgvector.NewVector(vecs[0])))
+	require.NoError(t, s.SetMemoryEmbedding(ctx, m.ID, content, pgvector.NewVector(vecs[0])))
 	return m
 }
 
@@ -85,7 +85,7 @@ func TestSearchMemoriesVectorLeg(t *testing.T) {
 	// to the query's: only the vector leg can find this.
 	m, err := s.CreateMemory(ctx, "zzz qqq nothing in common", nil, nil)
 	require.NoError(t, err)
-	require.NoError(t, s.SetMemoryEmbedding(ctx, m.ID, *queryVec(t, fe, "alpha beta")))
+	require.NoError(t, s.SetMemoryEmbedding(ctx, m.ID, m.Content, *queryVec(t, fe, "alpha beta")))
 
 	keyword, err := s.SearchMemories(ctx, SearchParams{Query: "alpha beta", Mode: ModeKeyword, Limit: 10})
 	require.NoError(t, err)
