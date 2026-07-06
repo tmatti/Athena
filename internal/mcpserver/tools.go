@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -297,7 +298,13 @@ func oneLine(s string) string {
 	s = strings.Join(strings.Fields(s), " ")
 	const maxLen = 300
 	if len(s) > maxLen {
-		return s[:maxLen] + "..."
+		// Back up to a rune boundary so truncation never splits a multibyte
+		// rune into invalid UTF-8.
+		cut := maxLen
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		return s[:cut] + "..."
 	}
 	return s
 }

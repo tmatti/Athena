@@ -113,7 +113,8 @@ func (s *Store) UpdateMemory(ctx context.Context, id string, p UpdateMemoryParam
 	if p.Content != nil {
 		args = append(args, *p.Content)
 		sets = append(sets, fmt.Sprintf(`content = $%d`, len(args)))
-		sets = append(sets, `embedding = NULL`, `embed_status = 'pending'`)
+		sets = append(sets, `embedding = NULL`, `embed_status = 'pending'`,
+			`embed_attempts = 0`, `embed_last_attempt_at = NULL`)
 	}
 	if p.Tags != nil {
 		args = append(args, *p.Tags)
@@ -140,15 +141,23 @@ func (s *Store) DeleteMemory(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *Store) SetMemoryEmbedding(ctx context.Context, id string, vec pgvector.Vector) error {
+// SetMemoryEmbedding stores the embedding only if the memory's content still
+// matches what was embedded. A 0-row result is not an error: the content
+// changed (or the row was deleted) while the embedding was in flight, so the
+// stale vector is discarded and the fresh pending state is re-embedded later.
+func (s *Store) SetMemoryEmbedding(ctx context.Context, id, content string, vec pgvector.Vector) error {
 	_, err := s.pool.Exec(ctx,
-		`UPDATE memories SET embedding = $2, embed_status = 'ok' WHERE id = $1`, id, vec)
+		`UPDATE memories
+		 SET embedding = $2, embed_status = 'ok', embed_attempts = 0, embed_last_attempt_at = NULL
+		 WHERE id = $1 AND content = $3`, id, vec, content)
 	return err
 }
 
 func (s *Store) MarkMemoryEmbedFailed(ctx context.Context, id string) error {
 	_, err := s.pool.Exec(ctx,
-		`UPDATE memories SET embed_status = 'failed' WHERE id = $1`, id)
+		`UPDATE memories
+		 SET embed_status = 'failed', embed_attempts = embed_attempts + 1, embed_last_attempt_at = now()
+		 WHERE id = $1`, id)
 	return err
 }
 
@@ -159,15 +168,15 @@ func encodeCursor(at time.Time, id string) string {
 func decodeCursor(cursor string) (time.Time, string, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
-		return time.Time{}, "", fmt.Errorf("invalid cursor")
+		return time.Time{}, "", ErrInvalidCursor
 	}
 	at, id, ok := strings.Cut(string(raw), "|")
 	if !ok {
-		return time.Time{}, "", fmt.Errorf("invalid cursor")
+		return time.Time{}, "", ErrInvalidCursor
 	}
 	t, err := time.Parse(time.RFC3339Nano, at)
 	if err != nil {
-		return time.Time{}, "", fmt.Errorf("invalid cursor")
+		return time.Time{}, "", ErrInvalidCursor
 	}
 	return t, id, nil
 }
