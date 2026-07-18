@@ -51,7 +51,7 @@ C4Container
 
     System_Boundary(athena, "Athena binary (:8080)") {
         Container(router, "HTTP router", "chi", "Recoverer + request log. /healthz open; bearer auth (BRAIN_API_KEY) guards everything else.")
-        Container(mcp, "MCP server", "go-sdk, Streamable HTTP at /mcp (or --stdio)", "9 tools: remember, recall, forget, list_memories, create_note, get_note, update_note, delete_note, list_tags")
+        Container(mcp, "MCP server", "go-sdk, Streamable HTTP at /mcp (or --stdio)", "10 tools: remember, recall, get_memory, forget, list_memories, create_note, get_note, update_note, delete_note, list_tags")
         Container(rest, "REST API", "Go, /v1/*", "CRUD for memories, notes, tags + /v1/search")
         Container(brain, "Brain service", "internal/service", "All shared logic: chunking, embedding orchestration, search fusion, validation")
         Container(retry, "Embed retry loop", "goroutine, 1-min tick", "Re-embeds pending/failed rows in batches of 32 with exponential backoff")
@@ -285,8 +285,9 @@ Search results are pointers, not payloads:
    `score`, a one-line `snippet` (memory content, or the best-matching chunk),
    and for notes the `title` and `chunk_id`.
 2. The agent follows the reference: `get_note(note_id)` fetches the full
-   original content (never the chunks — the note row is the source of truth),
-   `update_note(note_id)` / `forget(memory_id)` mutate by id.
+   original content (never the chunks — the note row is the source of truth)
+   and `get_memory(memory_id)` fetches a memory's full content, tags, and
+   source; `update_note(note_id)` / `forget(memory_id)` mutate by id.
 3. Deleting a note cascades to its chunks (`ON DELETE CASCADE`); deleting a
    memory is a single-row delete.
 4. Tags are the cross-cutting reference: `list_tags` aggregates counts across
