@@ -9,6 +9,11 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+// SubjectOwner is the single resource owner every credential resolves to.
+// There is deliberately no user table yet; if multi-user ever lands, tokens
+// and middleware keep their shape and only this value becomes per-user.
+const SubjectOwner = "owner"
+
 // ErrInvalidCursor is returned when a pagination cursor cannot be decoded.
 var ErrInvalidCursor = errors.New("invalid cursor")
 

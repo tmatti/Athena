@@ -17,6 +17,15 @@ type RouterOptions struct {
 	V1 func(r chi.Router)
 	// Mounts lets additional handlers (e.g. the MCP endpoint) attach behind auth.
 	Mounts map[string]http.Handler
+	// Public registers unauthenticated routes (e.g. the OAuth discovery,
+	// registration, authorize, and token endpoints).
+	Public func(r chi.Router)
+	// TokenValidator, when set, lets BearerAuth accept OAuth access tokens
+	// in addition to the static API key.
+	TokenValidator TokenValidator
+	// ResourceMetadataURL, when set, is advertised in the WWW-Authenticate
+	// header on 401 responses (RFC 9728) so MCP clients can discover OAuth.
+	ResourceMetadataURL string
 }
 
 func NewRouter(opts RouterOptions) http.Handler {
@@ -37,8 +46,12 @@ func NewRouter(opts RouterOptions) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
+	if opts.Public != nil {
+		opts.Public(r)
+	}
+
 	r.Group(func(r chi.Router) {
-		r.Use(BearerAuth(opts.APIKey))
+		r.Use(BearerAuth(opts.APIKey, opts.TokenValidator, opts.ResourceMetadataURL))
 
 		r.Route("/v1", func(r chi.Router) {
 			if opts.V1 != nil {

@@ -1,22 +1,55 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/tmatti/athena/internal/store"
 )
 
-func BearerAuth(apiKey string) func(http.Handler) http.Handler {
+// TokenValidator resolves a bearer token that is not the static API key —
+// e.g. an OAuth access token — to its subject. Implementations return an
+// error for unknown or expired tokens.
+type TokenValidator func(ctx context.Context, token string) (subject string, err error)
+
+type ctxKey int
+
+const subjectKey ctxKey = iota
+
+// SubjectFromContext returns the authenticated subject set by BearerAuth,
+// or "" for unauthenticated requests.
+func SubjectFromContext(ctx context.Context) string {
+	s, _ := ctx.Value(subjectKey).(string)
+	return s
+}
+
+// BearerAuth authenticates requests with either the static API key or, when
+// validate is non-nil, an OAuth access token. When resourceMetadataURL is
+// set, 401 responses carry the RFC 9728 WWW-Authenticate challenge that MCP
+// clients use to discover the OAuth endpoints.
+func BearerAuth(apiKey string, validate TokenValidator, resourceMetadataURL string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-			if !ok || subtle.ConstantTimeCompare([]byte(token), []byte(apiKey)) != 1 {
-				writeError(w, http.StatusUnauthorized, "unauthorized", "missing or invalid bearer token")
+			if ok && subtle.ConstantTimeCompare([]byte(token), []byte(apiKey)) == 1 {
+				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), subjectKey, store.SubjectOwner)))
 				return
 			}
-			next.ServeHTTP(w, r)
+			if ok && validate != nil {
+				if subject, err := validate(r.Context(), token); err == nil {
+					next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), subjectKey, subject)))
+					return
+				}
+			}
+			if resourceMetadataURL != "" {
+				w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer resource_metadata=%q`, resourceMetadataURL))
+			}
+			writeError(w, http.StatusUnauthorized, "unauthorized", "missing or invalid bearer token")
 		})
 	}
 }

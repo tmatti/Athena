@@ -19,6 +19,7 @@ import (
 	"github.com/tmatti/athena/internal/db"
 	"github.com/tmatti/athena/internal/embed"
 	"github.com/tmatti/athena/internal/mcpserver"
+	"github.com/tmatti/athena/internal/oauth"
 	"github.com/tmatti/athena/internal/service"
 	"github.com/tmatti/athena/internal/store"
 )
@@ -69,7 +70,8 @@ func run() error {
 		log.Info("embedding provider disabled; search runs keyword-only")
 	}
 
-	brain := service.New(store.New(pool), embedder, log)
+	st := store.New(pool)
+	brain := service.New(st, embedder, log)
 	go brain.RunEmbedRetryLoop(ctx, time.Minute)
 
 	if *stdio {
@@ -78,13 +80,22 @@ func run() error {
 
 	handlers := &api.Handlers{Brain: brain, Log: log}
 
-	router := api.NewRouter(api.RouterOptions{
+	opts := api.RouterOptions{
 		Log:     log,
 		APIKey:  cfg.BrainAPIKey,
 		Healthy: pool.Ping,
 		V1:      handlers.Routes,
 		Mounts:  map[string]http.Handler{"/mcp": mcpserver.HTTPHandler(brain)},
-	})
+	}
+	if cfg.PublicBaseURL != "" {
+		osrv := oauth.New(st, cfg.PublicBaseURL, cfg.BrainAPIKey, log)
+		opts.Public = osrv.Routes
+		opts.TokenValidator = osrv.ValidateAccessToken
+		opts.ResourceMetadataURL = osrv.ResourceMetadataURL()
+		log.Info("oauth enabled for MCP clients", "issuer", cfg.PublicBaseURL)
+	}
+
+	router := api.NewRouter(opts)
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
